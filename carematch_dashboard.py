@@ -299,226 +299,135 @@ st.markdown("""***CONCLUSION***
 - Our goal of the project is to improve wait time for patients’ appointment through analyzing the symptoms and the information about the patient such as zip code, provider specialty, age.
   However, our analysis shows no meaningful wait time improvement even with clustering, suggesting that more information needed for dataset over a long period of time, thus the robustness of the dataset would yield more meaningful insights during the data analysis process.""") 
 # ======================
-# Settings
-# --------
-EMBED_MODEL_NAME = "all-MiniLM-L6-v2"
-STRUCT_COLS = ["urgency_score", "chronic_conditions_count", "mental_health_flag"]  # must be 3 and in this order
-TEXT_COL = "condition_summary"
-ZIP_COL = "zip_code"
-PROVIDER_COL = "assigned_provider_id"
-SPEC_COL = "provider_specialty"
-WAIT_COL = "wait_time"
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import StandardScaler
+from sklearn.cluster import KMeans
+from scipy.sparse import hstack
 
-# Optional: map your actual column names to the required ones
-RENAME_MAP = {
-    # "urgency": "urgency_score",
-    # "chronic_count": "chronic_conditions_count",
-    # "mental_health": "mental_health_flag",
-}
-# Apply rename (only keys that exist)
-if "carematch" in globals():
-    carematch = carematch.rename(columns={k: v for k, v in RENAME_MAP.items() if k in carematch.columns})
+CLUSTER_COL = "cluster"          # you already create this
+DIAG_COL = "diagnosis"           # from YAKE extraction
 
-# -------------------
-# Basic data hygiene
-# -------------------
-def _ensure_columns(df: pd.DataFrame):
-    required = [ZIP_COL, TEXT_COL, SPEC_COL] + STRUCT_COLS
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        raise ValueError(f"Missing required columns in carematch: {missing}")
-    # coerce numerics
-    df[STRUCT_COLS] = (df[STRUCT_COLS]
-                       .apply(pd.to_numeric, errors="coerce")
-                       .fillna(0.0)
-                       .astype("float32"))
-    if WAIT_COL in df.columns:
-        df[WAIT_COL] = pd.to_numeric(df[WAIT_COL], errors="coerce").astype("float32")
-    # condition_summary to str
-    df[TEXT_COL] = df[TEXT_COL].fillna("").astype(str)
-    # zip as string (normalize type for indexing)
-    df[ZIP_COL] = df[ZIP_COL].astype(str).str.strip()
-    return df
-
-if "carematch" in globals():
-    carematch = _ensure_columns(carematch)
-
-# -----------------------
-# Build all app resources
-# -----------------------
 @st.cache_resource(show_spinner=True)
-def build_assets(df: pd.DataFrame):
-    # 1) text embeddings
-    model = SentenceTransformer(EMBED_MODEL_NAME)
-    X_text = model.encode(df[TEXT_COL].tolist(), show_progress_bar=False,
-                          convert_to_numpy=True).astype("float32")
-    faiss.normalize_L2(X_text)
+def build_cluster_assets(df: pd.DataFrame, k: int = 4):
+    # 1) TF-IDF on diagnosis (short phrases -> very fast)
+    mask = df[DIAG_COL].notnull()
+    vectorizer = TfidfVectorizer(stop_words="english")
+    X_text = vectorizer.fit_transform(df.loc[mask, DIAG_COL].astype(str))
 
-    # 2) structured features (3 features, fixed order)
-    scaler = StandardScaler().fit(df[STRUCT_COLS].astype("float32"))
-    X_struct = scaler.transform(df[STRUCT_COLS].astype("float32")).astype("float32")
+    # 2) Structured -> scale
+    scaler_struct = StandardScaler()
+    X_struct = scaler_struct.fit_transform(
+        df.loc[mask, ["urgency_score","chronic_conditions_count","mental_health_flag"]]
+    )
 
-    # 3) combined matrix
-    X_all = np.hstack([X_text, X_struct]).astype("float32")
-    faiss.normalize_L2(X_all)
+    # 3) Fusion for clustering space
+    X_cluster = hstack([X_text, X_struct])
 
-    # 4) global FAISS index
-    d = X_all.shape[1]
-    global_index = faiss.IndexFlatIP(d)
-    global_index.add(X_all)
+    # 4) If you already labeled clusters, reuse them; else fit KMeans
+    if CLUSTER_COL in df.columns and df[CLUSTER_COL].notnull().any():
+        # respect existing labels but also fit a KMeans to get centroids for inference
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10).fit(X_cluster)
+    else:
+        kmeans = KMeans(n_clusters=k, random_state=42, n_init=10).fit(X_cluster)
+        df.loc[mask, CLUSTER_COL] = kmeans.labels_
 
-    # 5) per-zip FAISS indices (pre-filter via zip)
-    per_zip_index = {}
-    per_zip_rows = {}
-    for z, sub in df.groupby(ZIP_COL, sort=False):
-        rows = sub.index.to_numpy()
-        per_zip_rows[z] = rows
-        X_sub = X_all[rows]
-        idx = faiss.IndexFlatIP(d)
-        idx.add(X_sub)
-        per_zip_index[z] = idx
+    # 5) Priors per cluster (specialty mix + avg wait + top diagnoses)
+    priors = {}
+    for c, sub in df.loc[mask].groupby(CLUSTER_COL):
+        spec_share = sub["provider_specialty"].value_counts(normalize=True).to_dict()
+        avg_wait = float(sub["wait_time"].mean()) if "wait_time" in sub else None
+        top_diag  = sub[DIAG_COL].value_counts().head(5).index.tolist()
+        priors[str(c)] = {"spec_share": spec_share, "avg_wait": avg_wait, "top_diag": top_diag}
 
-    return model, scaler, global_index, per_zip_index, per_zip_rows
+    return vectorizer, scaler_struct, kmeans, priors
 
-if "carematch" in globals():
-    model, scaler, global_index, per_zip_index, per_zip_rows = build_assets(carematch)
+vectorizer, scaler_struct, kmeans, cluster_priors = build_cluster_assets(carematch, k=4)
+import yake
 
-# -------------------------
-# Core retrieval function
-# -------------------------
-def search_similar(zip_code: str, urgency: int, chronic_count: int, mental_health: int,
-                   condition_summary: str, k: int = 20):
-    # 1) build query vector (same 3 features in same order)
-    q_struct = np.array([[urgency, chronic_count, mental_health]], dtype="float32")
-    q_struct = scaler.transform(q_struct).astype("float32")
+kw_extractor = yake.KeywordExtractor(top=1, stopwords=None)
 
-    q_text = model.encode([condition_summary], convert_to_numpy=True).astype("float32")
-    faiss.normalize_L2(q_text)
+def infer_cluster_from_intake(summary: str, urgency: int, chronic: int, mh: int):
+    # 1) Keyword from the new summary (same YAKE rule you used for the dataset)
+    diag = None
+    if summary and summary.strip():
+        kws = kw_extractor.extract_keywords(summary)
+        diag = kws[0][0] if kws else ""
 
-    q = np.hstack([q_text, q_struct]).reshape(1, -1)
+    # 2) Vectorize with the SAME vectorizer/scaler used above
+    Xt = vectorizer.transform([diag or ""])       # TF-IDF in diagnosis space
+    Xs = scaler_struct.transform([[urgency, chronic, mh]])
+    Xq = hstack([Xt, Xs])
 
-    # 2) choose index: per-zip first, else global
+    # 3) Predict cluster
+    c = kmeans.predict(Xq)[0]
+    return str(c), diag or ""
+def search_similar_with_cluster(zip_code, urgency, chronic_count, mental_health, condition_summary, k=20):
+    # build the FAISS query vector exactly like you already do
+    results_global = search_similar(
+        zip_code=str(zip_code).strip(),
+        urgency=int(urgency),
+        chronic_count=int(chronic_count),
+        mental_health=int(mental_health),
+        condition_summary=condition_summary,
+        k=max(k, 50)  # fetch a bit more to allow sub-filtering
+    )
+
+    # infer cluster for this intake
+    cluster_id, diag_kw = infer_cluster_from_intake(condition_summary, urgency, chronic_count, mental_health)
+
+    # best slice: ZIP + cluster
     z = str(zip_code).strip()
-    if z in per_zip_index and len(per_zip_rows[z]) >= max(5, k//2):
-        D, I = per_zip_index[z].search(q, k)
-        # map local indices back to original DataFrame rows
-        row_ids = per_zip_rows[z][I[0]]
+    slice_zip_cluster = results_global[(carematch.loc[results_global.index, "zip_code"].astype(str).str.strip() == z) &
+                                       (carematch.loc[results_global.index, CLUSTER_COL].astype(str) == cluster_id)]
+
+    if len(slice_zip_cluster) >= max(5, k//2):
+        use = slice_zip_cluster
     else:
-        D, I = global_index.search(q, k)
-        row_ids = I[0]
+        # fallback: same ZIP
+        slice_zip_only = results_global[carematch.loc[results_global.index, "zip_code"].astype(str).str.strip() == z]
+        use = slice_zip_only if len(slice_zip_only) >= max(5, k//2) else results_global
 
-    results = carematch.iloc[row_ids].copy()
-    results["similarity"] = D[0]
-    return results
+    # keep top-k by similarity
+    use = use.sort_values("similarity", ascending=False).head(k).copy()
+    use["__cluster_id__"] = cluster_id
+    use["__diag_kw__"] = diag_kw
+    return use, cluster_id
+from collections import Counter
 
-# -----------------------------------
-# Summarize into a "recommendation"
-# -----------------------------------
-def summarize_recommendation(results: pd.DataFrame):
-    spec = None
-    provider = None
-    wait = None
+def summarize_with_priors(results: pd.DataFrame, cluster_id: str, alpha=0.7):
+    # neighbor votes (similarity-weighted)
+    spec_votes = Counter()
+    if "provider_specialty" in results:
+        for s, w in zip(results["provider_specialty"].astype(str), results["similarity"]):
+            spec_votes[s] += float(w)
 
-    if not results.empty:
-        # specialty by frequency then by average similarity
-        if SPEC_COL in results.columns:
-            spec_counts = Counter(results[SPEC_COL].dropna().astype(str))
-            if spec_counts:
-                # tie-breaker by mean similarity inside the specialty
-                top_spec, _ = max(
-                    spec_counts.items(),
-                    key=lambda kv: (kv[1], results.loc[results[SPEC_COL] == kv[0], "similarity"].mean())
-                )
-                spec = top_spec
+    # cluster prior
+    prior = cluster_priors.get(cluster_id, {})
+    prior_mix = prior.get("spec_share", {})
+    prior_wait = prior.get("avg_wait", None)
 
-        if PROVIDER_COL in results.columns and results[PROVIDER_COL].notna().any():
-            provider = results[PROVIDER_COL].mode().iloc[0]
+    # blend
+    combined = {}
+    for s in set(list(spec_votes.keys()) + list(prior_mix.keys())):
+        v = spec_votes.get(s, 0.0)
+        p = prior_mix.get(s, 0.0)
+        combined[s] = alpha * v + (1 - alpha) * p
 
-        if WAIT_COL in results.columns and results[WAIT_COL].notna().any():
-            wait = float(results[WAIT_COL].mean())
+    specialty = max(combined.items(), key=lambda kv: kv[1])[0] if combined else None
+    provider  = results["assigned_provider_id"].mode().iloc[0] if "assigned_provider_id" in results and results["assigned_provider_id"].notna().any() else None
+    wait      = float(results["wait_time"].mean()) if "wait_time" in results and results["wait_time"].notna().any() else prior_wait
 
-    return provider, spec, wait
+    # short rationale
+    diag_preview = ", ".join((cluster_priors.get(cluster_id, {}).get("top_diag") or [])[:3])
+    rationale = f"Matches Cluster {cluster_id} (top dx: {diag_preview})" if diag_preview else f"Matches Cluster {cluster_id}"
 
-# -----------------------------------
-# Optional: LLM generation (OpenAI)
-# -----------------------------------
-def generate_text_recommendation(inputs, provider, specialty, wait, results):
-    """
-    If OPENAI_API_KEY is set, use OpenAI for a nicer summary.
-    Otherwise, return a rule-based paragraph.
-    """
-    api_key = os.getenv("OPENAI_API_KEY")
-    if api_key:
-        try:
-            from openai import OpenAI
-            client = OpenAI(api_key=api_key)
-            few_examples = (
-                "You are triaging patient intake into provider specialties. "
-                "You must be concise, non-clinical, and avoid diagnoses. "
-                "Use urgency, chronic count, mental health flag, and similar-case evidence.\n"
-            )
-            top_rows = results.head(5)[[SPEC_COL, WAIT_COL, "similarity"]].fillna("").to_dict("records")
-            prompt = (
-                f"{few_examples}"
-                f"Inputs: {inputs}. Suggested specialty: {specialty}. "
-                f"Estimated average wait: {None if wait is None else round(wait,1)} days. "
-                f"Top similar cases (specialty, wait, similarity): {top_rows}.\n"
-                "Write 3–5 sentences recommending which specialty to book with and why, "
-                "mentioning urgency and providing a next step."
-            )
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.2,
-                max_tokens=180,
-            )
-            return resp.choices[0].message.content.strip()
-        except Exception:
-            pass  # fall back to rule-based
-
-    # Fallback: rule-based concise text
-    lines = []
-    if specialty:
-        lines.append(f"Recommended specialty: **{specialty}** based on the most similar past cases.")
-    else:
-        lines.append("No clear specialty majority from similar cases; suggest routing to **General Practice / Intake Nurse** for first review.")
-    if wait is not None:
-        lines.append(f"Estimated wait time from similar cases: **{round(wait,1)} days**.")
-    lines.append("Next step: create an appointment request with the suggested specialty, and add notes from the condition summary for prioritization.")
-    return " ".join(lines)
-
-# ======================
-# Streamlit UI
-# ======================
-st.title("🤖 Internal AI Triage Assistant")
-
-if "carematch" not in globals():
-    st.error("Dataset `carematch` is not loaded. Please load it before running the app.")
-    st.stop()
-
-st.caption("Searches similar historical cases (text + structured signals) and proposes a specialty/provider.")
-
-st.subheader("📝 Patient Intake Form")
-col1, col2 = st.columns(2)
-with col1:
-    zip_code = st.text_input("📍 Zip Code", value="")
-    urgency = st.selectbox("⚡ Urgency Score", sorted(carematch["urgency_score"].dropna().unique().tolist()))
-with col2:
-    chronic_count = st.number_input("🩺 Chronic Conditions Count", min_value=0, max_value=20, step=1, value=0)
-    mental_health = st.selectbox("🧠 Mental Health Flag", [0, 1])
-
-condition_summary = st.text_area("💬 Patient Condition Summary", height=140, placeholder="Brief symptoms, duration, known conditions...")
-
-k = st.slider("Top-K similar cases to consider", 5, 100, 20, 5)
-
+    return provider, specialty, wait, rationale
 if st.button("Generate Recommendation", use_container_width=True):
     if not condition_summary.strip():
-        st.warning("⚠️ Please enter a condition summary.")
-        st.stop()
+        st.warning("⚠️ Please enter a condition summary."); st.stop()
 
-    # Retrieval
-    results = search_similar(
-        zip_code=str(zip_code).strip() if zip_code else "",
+    results, cluster_id = search_similar_with_cluster(
+        zip_code=zip_code,
         urgency=int(urgency),
         chronic_count=int(chronic_count),
         mental_health=int(mental_health),
@@ -526,10 +435,8 @@ if st.button("Generate Recommendation", use_container_width=True):
         k=k
     )
 
-    # Summaries
-    provider, specialty, wait = summarize_recommendation(results)
+    provider, specialty, wait, rationale = summarize_with_priors(results, cluster_id, alpha=0.7)
 
-    # NL recommendation
     rec_text = generate_text_recommendation(
         inputs={
             "zip_code": zip_code,
@@ -542,31 +449,12 @@ if st.button("Generate Recommendation", use_container_width=True):
         specialty=specialty,
         wait=wait,
         results=results
-    )
+    ) + (f"  \n_Reasoning_: {rationale}." if rationale else "")
 
     st.subheader("🔎 Recommendation")
     st.markdown(rec_text)
 
-    # Quick facts
-    left, right = st.columns(2)
-    with left:
-        st.markdown(f"- **Suggested Provider ID:** `{provider}`" if provider else "- **Suggested Provider ID:** _no clear majority_")
-        st.markdown(f"- **Specialty:** `{specialty}`" if specialty else "- **Specialty:** _no clear majority_")
-        st.markdown(f"- **Avg Wait (days):** `{round(wait,1)}`" if wait is not None else "- **Avg Wait:** _n/a_")
-    with right:
-        st.markdown(f"- **Urgency:** {urgency}")
-        st.markdown(f"- **Chronic Count:** {chronic_count}")
-        st.markdown(f"- **Mental Health:** {mental_health}")
-
-    # Similar cases table
-    st.subheader("📋 Similar Past Cases")
-    show_cols = [c for c in [TEXT_COL, PROVIDER_COL, SPEC_COL, WAIT_COL, "similarity"] if c in results.columns]
-    st.dataframe(results[show_cols].reset_index(drop=True))
-
-    # Specialty distribution
-    if SPEC_COL in results.columns and not results.empty:
-        spec_counts = results[SPEC_COL].value_counts().reset_index()
-        spec_counts.columns = ["specialty", "count"]
-        st.bar_chart(spec_counts.set_index("specialty"))
+    # Quick facts + evidence (unchanged)
+    ...
 
 
