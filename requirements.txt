@@ -1,8 +1,10 @@
+faiss-cpu
+sentence-transformers
 streamlit
 pandas
-numpy
 matplotlib
 seaborn
 scikit-learn
 wordcloud
 yake
+openai
