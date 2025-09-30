@@ -292,80 +292,122 @@ st.markdown(""" ***Key Takeaways***
 
 - Cluster 1 and Cluster 3 represent the highest patient loads and may require more staffing and scheduling flexibility to balance demand.
 
-- Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).""")
-
-st.subheader("***Conclusion and Recommendation***")
-
-st.markdown(""" Our goal of the project is to improve wait time for patients’ appointment through analyzing the symptoms and the information about the patient such as zip code, provider specialty, age.
+- Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).
+- Our goal of the project is to improve wait time for patients’ appointment through analyzing the symptoms and the information about the patient such as zip code, provider specialty, age.
   However, our analysis shows no meaningful wait time improvement even with clustering, suggesting that more information needed for dataset over a long period of time, thus the robustness of the dataset would yield more meaningful insights during the data analysis process.""") 
 # ======================
 # ======================
-# Retrieval Function
-# ======================
-def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
-    """
-    Recommend providers based on patient input (structured + text features).
-    """
+# --- imports you need in this file ---
+import numpy as np
+import streamlit as st
+import faiss
+from sentence_transformers import SentenceTransformer
+from sklearn.preprocessing import StandardScaler
 
-    # --- 1. Structured input (MUST match scaler training: 3 features) ---
-    q_struct = [[urgency, chronic_count, mental_health]]
+# ---------------------------------------
+# Build model, scaler, and FAISS index ONCE
+# (cache avoids re-building every rerun)
+# ---------------------------------------
+@st.cache_resource
+def build_assets(df):
+    # 1) text embeddings
+    model = SentenceTransformer("all-MiniLM-L6-v2")
+    texts = df["condition_summary"].fillna("").astype(str).tolist()
+    X_text = model.encode(texts, show_progress_bar=False, convert_to_numpy=True).astype("float32")
+    faiss.normalize_L2(X_text)
+
+    # 2) structured features (MUST be these 3 and in this order)
+    struct_cols = ["urgency_score", "chronic_conditions_count", "mental_health_flag"]
+    scaler = StandardScaler().fit(df[struct_cols].astype("float32"))
+    X_struct = scaler.transform(df[struct_cols].astype("float32")).astype("float32")
+
+    # 3) combine
+    X = np.hstack([X_text, X_struct])
+
+    # 4) FAISS (cosine via L2-normalized IP)
+    d = X.shape[1]
+    index = faiss.IndexFlatIP(d)
+    faiss.normalize_L2(X)
+    index.add(X)
+
+    return model, scaler, index
+
+model, scaler, index = build_assets(carematch)
+
+# -------------------------
+# Retrieval / recommendation
+# -------------------------
+def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=10):
+    # 1) structured (exactly 3 features, same order as scaler fit)
+    q_struct = np.array([[urgency, chronic_count, mental_health]], dtype="float32")
     q_struct = scaler.transform(q_struct).astype("float32")
 
-    # --- 2. Text input ---
+    # 2) text
     q_text = model.encode([condition_summary], convert_to_numpy=True).astype("float32")
     faiss.normalize_L2(q_text)
 
-    # --- 3. Combine structured + text ---
-    q_combined = np.hstack([q_text, q_struct])
+    # 3) combine and search
+    q = np.hstack([q_text, q_struct]).reshape(1, -1)
+    D, I = index.search(q, k)
 
-    # --- 4. Search in FAISS index ---
-    D, I = index.search(q_combined.reshape(1, -1), k)
+    # 4) collect
+    results = carematch.iloc[I[0]].copy()
+    results["similarity"] = D[0]
 
-    # --- 5. Collect results ---
-    similar_rows = carematch.iloc[I[0]].copy()
-    similar_rows["similarity"] = D[0]
+    # 5) optional zip filter (make sure types match)
+    if zip_code is not None and not np.isnan(zip_code):
+        # if your data has zip as string, cast the input too:
+        # zip_code = str(int(zip_code))
+        results = results[results["zip_code"] == zip_code]
 
-    # --- Optional: filter by zip code ---
-    if zip_code:
-        similar_rows = similar_rows[similar_rows["zip_code"] == zip_code]
+        # if nothing left after filtering, fall back to unfiltered top-k
+        if results.empty:
+            results = carematch.iloc[I[0]].copy()
+            results["similarity"] = D[0]
 
-    provider = similar_rows["assigned_provider_id"].mode()[0] if "assigned_provider_id" in similar_rows and not similar_rows.empty else None
-    specialty = similar_rows["provider_specialty"].mode()[0] if "provider_specialty" in similar_rows and not similar_rows.empty else None
-    wait = similar_rows["wait_time"].mean() if "wait_time" in similar_rows and not similar_rows.empty else None
+    # 6) simple “majority” provider / specialty and avg wait
+    provider = results["assigned_provider_id"].mode().iloc[0] if "assigned_provider_id" in results and not results.empty else None
+    specialty = results["provider_specialty"].mode().iloc[0] if "provider_specialty" in results and not results.empty else None
+    wait = float(results["wait_time"].mean()) if "wait_time" in results and not results.empty else None
 
-    return similar_rows, provider, specialty, wait
-
+    return results, provider, specialty, wait
 
 # ======================
-# Streamlit App
+# Streamlit UI
 # ======================
 st.title("🤖 Internal AI Triage Assistant (Multi-Feature)")
-
 st.subheader("📝 Patient Intake Form")
 
-zip_code = st.number_input("📍 Zip Code", min_value=10000, max_value=99999, step=1)
-urgency = st.selectbox("⚡ Urgency Level", sorted(carematch['urgency_score'].unique()))
+zip_code = st.number_input("📍 Zip Code", min_value=10000, max_value=99999, step=1, format="%d")
+urgency = st.selectbox("⚡ Urgency Level", sorted(carematch["urgency_score"].unique()))
 chronic_count = st.number_input("🩺 Chronic Conditions Count", min_value=0, max_value=10, step=1)
-mental_health = st.selectbox("🧠 Mental Health Flag", [0, 1])  # assuming dataset uses 0/1
+mental_health = st.selectbox("🧠 Mental Health Flag", [0, 1])
 condition_summary = st.text_area("💬 Patient Condition Summary")
 
 if st.button("Generate Recommendation"):
     if condition_summary.strip():
         results, provider, specialty, wait = recommend_provider(
-            zip_code, urgency, chronic_count, mental_health, condition_summary, k=10
+            zip_code=int(zip_code),  # cast to int if your df stores zips as int
+            urgency=int(urgency),
+            chronic_count=int(chronic_count),
+            mental_health=int(mental_health),
+            condition_summary=condition_summary,
+            k=20,  # ask for a few more to survive zip filtering
         )
 
         st.subheader("🔎 Recommendation")
-        st.markdown(f"- **Urgency Score:** {urgency_score}")
-        st.markdown(f"- **Chronic Conditions Count:** {chronic_conditions_count}")
-        st.markdown(f"- **Mental Health Flag:** {mental_health_flag}")
-        st.markdown(f"- **Suggested Provider ID:** `{assigned_provider_id}`")
-        st.markdown(f"- **Specialty:** `{provider_specialty}`")
-        st.markdown(f"- **Estimated Wait Time:** `{wait_time}` day")
+        st.markdown(f"- **Urgency Score:** {urgency}")
+        st.markdown(f"- **Chronic Conditions Count:** {chronic_count}")
+        st.markdown(f"- **Mental Health Flag:** {mental_health}")
+        st.markdown(f"- **Suggested Provider ID:** `{provider}`")
+        st.markdown(f"- **Specialty:** `{specialty}`")
+        st.markdown(f"- **Estimated Wait Time (avg):** `{None if wait is None else round(wait,2)}` days")
 
         st.subheader("📋 Similar Past Cases")
-        st.dataframe(results[['condition_summary','assigned_provider_id','provider_specialty','wait_time','similarity']])
+        cols_to_show = [c for c in ["condition_summary","assigned_provider_id","provider_specialty","wait_time","similarity"] if c in results.columns]
+        st.dataframe(results[cols_to_show].reset_index(drop=True))
     else:
         st.warning("⚠️ Please enter a condition summary.")
+
 
 
