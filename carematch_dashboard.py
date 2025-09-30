@@ -28,67 +28,7 @@ carematch = pd.read_csv("carematch_requests.csv")
 st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 # === Dashboard Title ===
 st.title("📊 Carematch Dashboard")
-from sklearn.preprocessing import StandardScaler
-import numpy as np
-import faiss
-from sentence_transformers import SentenceTransformer
 
-# Prepare embeddings
-texts = carematch['condition_summary'].fillna("").astype(str).tolist()
-model = SentenceTransformer('all-MiniLM-L6-v2')
-X_text = model.encode(texts, show_progress_bar=False, convert_to_numpy=True).astype('float32')
-
-# Structured features
-structured_features = carematch[["urgency_score", 
-                                 "chronic_conditions_count", 
-                                 "mental_health_flag"]]
-
-# Normalize structured features
-scaler = StandardScaler()
-X_structured = scaler.fit_transform(structured_features).astype("float32")
-
-# Combine text + structured
-X_combined = np.hstack([X_text, X_structured])
-
-# Build FAISS index
-d = X_combined.shape[1]
-index = faiss.IndexFlatIP(d)   # cosine similarity (after normalization)
-faiss.normalize_L2(X_combined)
-index.add(X_combined)
-
-# ======================
-# Retrieval Function
-# ======================
- Recommend providers based on patient input (structured + text features).
-    """
-
-    # --- 1. Prepare structured input (MUST match scaler training) ---
-    q_struct = [[urgency, chronic_count, mental_health]]
-    q_struct = scaler.transform(q_struct).astype("float32")
-
-    # --- 2. Prepare text input ---
-    q_text = model.encode([condition_summary], convert_to_numpy=True).astype("float32")
-    faiss.normalize_L2(q_text)
-
-    # --- 3. Combine structured + text ---
-    q_combined = np.hstack([q_text, q_struct])
-
-    # --- 4. Search in FAISS index ---
-    D, I = index.search(q_combined.reshape(1, -1), k)
-
-    # --- 5. Collect results ---
-    similar_rows = carematch.iloc[I[0]].copy()
-    similar_rows["similarity"] = D[0]
-
-    # Optional: filter by zip code if provided
-    if zip_code:
-        similar_rows = similar_rows[similar_rows["zip_code"] == zip_code]
-
-    provider = similar_rows["assigned_provider_id"].mode()[0] if "assigned_provider_id" in similar_rows and not similar_rows.empty else None
-    specialty = similar_rows["provider_specialty"].mode()[0] if "provider_specialty" in similar_rows and not similar_rows.empty else None
-    wait = similar_rows["wait_time"].mean() if "wait_time" in similar_rows and not similar_rows.empty else None
-
-    return similar_rows, provider, specialty, wait
 # === Introduction / Project Background ===
 st.header("🏥 Project Background")
 st.markdown("""**CareMatch Health** is a regional healthcare network serving a diverse patient population across both urban and suburban communities.  
@@ -353,7 +293,47 @@ st.markdown(""" ***Key Takeaways***
 - Cluster 1 and Cluster 3 represent the highest patient loads and may require more staffing and scheduling flexibility to balance demand.
 
 - Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).""")
-st.header("🤖 Internal AI Triage Assistant")
+st.header("Conclusion and Recommendation")
+st.markdown("""
+  Our goal of the project is to improve wait time for patients’ appointment through analyzing the symptoms and the information about the patient such as zip code, provider specialty, age.
+  However, our analysis shows no meaningful wait time improvement even with clustering, suggesting that more information needed for dataset over a long period of time, thus the robustness of the dataset would yield more meaningful insights during the data analysis process.""") 
+# ======================
+# ======================
+# Retrieval Function
+# ======================
+def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
+    """
+    Recommend providers based on patient input (structured + text features).
+    """
+
+    # --- 1. Structured input (MUST match scaler training: 3 features) ---
+    q_struct = [[urgency, chronic_count, mental_health]]
+    q_struct = scaler.transform(q_struct).astype("float32")
+
+    # --- 2. Text input ---
+    q_text = model.encode([condition_summary], convert_to_numpy=True).astype("float32")
+    faiss.normalize_L2(q_text)
+
+    # --- 3. Combine structured + text ---
+    q_combined = np.hstack([q_text, q_struct])
+
+    # --- 4. Search in FAISS index ---
+    D, I = index.search(q_combined.reshape(1, -1), k)
+
+    # --- 5. Collect results ---
+    similar_rows = carematch.iloc[I[0]].copy()
+    similar_rows["similarity"] = D[0]
+
+    # --- Optional: filter by zip code ---
+    if zip_code:
+        similar_rows = similar_rows[similar_rows["zip_code"] == zip_code]
+
+    provider = similar_rows["assigned_provider_id"].mode()[0] if "assigned_provider_id" in similar_rows and not similar_rows.empty else None
+    specialty = similar_rows["provider_specialty"].mode()[0] if "provider_specialty" in similar_rows and not similar_rows.empty else None
+    wait = similar_rows["wait_time"].mean() if "wait_time" in similar_rows and not similar_rows.empty else None
+
+    return similar_rows, provider, specialty, wait
+
 
 # ======================
 # Streamlit App
@@ -387,10 +367,5 @@ if st.button("Generate Recommendation"):
         st.dataframe(results[['condition_summary','assigned_provider_id','provider_specialty','wait_time','similarity']])
     else:
         st.warning("⚠️ Please enter a condition summary.")
-      def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
-    """
-   def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
-    """
-   
 
 
