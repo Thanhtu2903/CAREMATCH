@@ -186,6 +186,13 @@ st.subheader("📊 Case Counts per Provider (Filtered by Month/Year)")
 st.dataframe(filtered)
 
 # === Keyword Extraction ===
+st.markdown("""***Data Preprocessing ***: 
+The dataset contained free-text entries under the column “condition_summary.”
+Since raw text entries often contained verbose sentences, we first applied keyword extraction. 
+We use YAKE package (Yet Another Keyword Extractor) was used to extract the most important terms from each condition summary. 
+These extracted keywords were used as the primary diagnosis terms. 
+Example: Raw Condition Summary: “Ongoing depression and emotional instability, need therapy.” Extracted Diagnosis: “ongoing depression.” 
+This ensured a consistent representation of patient conditions for clustering.""")
 st.header("🩺 Keyword Extraction from Condition Summaries")
 kw_extractor = yake.KeywordExtractor(top=1, stopwords=None)
 def extract_keyword(text):
@@ -206,6 +213,16 @@ st.pyplot(fig9)
 
 # === Clustering ===
 st.header("🤖 Patient Clustering Analysis")
+st.markdown("""*** Clustering method:***
+Beyond diagnosis extraction, we created additional features to better capture patient needs: urgency_score, chronic_conditions_count, and mental_health_flag. Together with the extracted “diagnosis”, these features formed the input for clustering analysis. To group patients into meaningful cohorts, we applied k-means clustering using scikit-learn package. The steps include the following:  
+
+- ***Vectorization:*** The “diagnosis” text was converted into numeric vectors using TF-IDF (term frequency–inverse document frequency).  
+
+- ***Feature Combination:*** “urgency_score”, “chronic_conditions_count”, “mental_health_flag”) were concatenated with text embeddings.  
+
+- ***Optimal Cluster Selection:*** The elbow method was used to determine the appropriate number of clusters by plotting the within- sum-of-squares (WSS) across different values of. We found that k=4 is the optimal number. 
+
+Cluster Labeling: Each patient was assigned to a cluster, which was then merged back with the original dataset for further analysis. """)
 vectorizer = TfidfVectorizer(stop_words="english")
 X = vectorizer.fit_transform(carematch["diagnosis"].dropna())
 structured = carematch.loc[carematch["diagnosis"].notnull(), ["urgency_score","chronic_conditions_count","mental_health_flag"]]
