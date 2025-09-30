@@ -9,7 +9,13 @@ import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-carematch = pd.read_csv("carematch_requests.csv")
+HERE = Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd()
+CSV  = HERE / "carematch_requests.csv"   # ensure this exact filename exists
+
+if not CSV.exists():
+    st.stop()  # halt cleanly in Streamlit
+    # or: raise FileNotFoundError(f"Not found: {CSV}\nContents: {[p.name for p in HERE.iterdir()]}")
+carematch = pd.read_csv(CSV)
 # === Load Dataset ===
 st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 # === Dashboard Title ===
