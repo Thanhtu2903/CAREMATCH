@@ -293,9 +293,9 @@ st.markdown(""" ***Key Takeaways***
 - Cluster 1 and Cluster 3 represent the highest patient loads and may require more staffing and scheduling flexibility to balance demand.
 
 - Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).""")
-st.header("Conclusion and Recommendation")
-st.markdown("""
-  Our goal of the project is to improve wait time for patients’ appointment through analyzing the symptoms and the information about the patient such as zip code, provider specialty, age.
+
+st.subheader("***Conclusion and Recommendation***")
+st.markdown(""" Our goal of the project is to improve wait time for patients’ appointment through analyzing the symptoms and the information about the patient such as zip code, provider specialty, age.
   However, our analysis shows no meaningful wait time improvement even with clustering, suggesting that more information needed for dataset over a long period of time, thus the robustness of the dataset would yield more meaningful insights during the data analysis process.""") 
 # ======================
 # ======================
@@ -356,12 +356,12 @@ if st.button("Generate Recommendation"):
 
         st.subheader("🔎 Recommendation")
         st.markdown(f"- **Zip Code:** {zip_code}")
-        st.markdown(f"- **Urgency Score:** {urgency}")
-        st.markdown(f"- **Chronic Conditions Count:** {chronic_count}")
-        st.markdown(f"- **Mental Health Flag:** {mental_health}")
-        st.markdown(f"- **Suggested Provider ID:** `{provider}`")
-        st.markdown(f"- **Specialty:** `{specialty}`")
-        st.markdown(f"- **Estimated Wait Time:** `{wait}` minutes")
+        st.markdown(f"- **Urgency Score:** {urgency_score}")
+        st.markdown(f"- **Chronic Conditions Count:** {chronic_conditions_count}")
+        st.markdown(f"- **Mental Health Flag:** {mental_health_flag}")
+        st.markdown(f"- **Suggested Provider ID:** `{assigned_provider_id}`")
+        st.markdown(f"- **Specialty:** `{provider_specialty}`")
+        st.markdown(f"- **Estimated Wait Time:** `{wait_time}` day")
 
         st.subheader("📋 Similar Past Cases")
         st.dataframe(results[['condition_summary','assigned_provider_id','provider_specialty','wait_time','similarity']])
