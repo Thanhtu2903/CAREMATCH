@@ -24,7 +24,13 @@ carematch = pd.read_csv("carematch_requests.csv")
 
 # === Dashboard Title ===
 st.title("📊 Carematch Dashboard")
+# === Introduction / Project Background ===
+st.header("🏥 Project Background")
+st.markdown("""
+**CareMatch Health** is a regional healthcare network serving a diverse patient population across both urban and suburban communities.  
+Patients submit appointment requests and complete intake forms through the organization’s digital platforms.  
 
+Although CareMatch holds a large volume of patient and operational data, it has not yet implemented advanced analytics or AI-powered tools to derive value from this information.  
 # === Show Sample Data ===
 st.subheader("Sample Data")
 st.write(carematch.head())
