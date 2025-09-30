@@ -284,7 +284,7 @@ st.subheader("🏥 Provider Specialty Distribution by Cluster")
 fig13, ax13 = plt.subplots(figsize=(12,6))
 sns.countplot(x="cluster", hue="provider_specialty", data=carematch, ax=ax13)
 st.pyplot(fig13)
-st.markdown(""" ***Key Takeaways***
+st.markdown("""***Key Takeaways***
 
 - Clusters are not distinguished by wait time, but by provider specialty demand.
 
@@ -292,7 +292,9 @@ st.markdown(""" ***Key Takeaways***
 
 - Cluster 1 and Cluster 3 represent the highest patient loads and may require more staffing and scheduling flexibility to balance demand.
 
-- Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).
+- Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).""")
+
+st.markdown("""***CONCLUSION***
 - Our goal of the project is to improve wait time for patients’ appointment through analyzing the symptoms and the information about the patient such as zip code, provider specialty, age.
   However, our analysis shows no meaningful wait time improvement even with clustering, suggesting that more information needed for dataset over a long period of time, thus the robustness of the dataset would yield more meaningful insights during the data analysis process.""") 
 # ======================
@@ -387,7 +389,6 @@ condition_summary = st.text_area("💬 Patient Condition Summary")
 if st.button("Generate Recommendation"):
     if condition_summary.strip():
         results, provider, specialty, wait = recommend_provider(
-            zip_code=int(zip_code),  # cast to int if your df stores zips as int
             urgency=int(urgency),
             chronic_count=int(chronic_count),
             mental_health=int(mental_health),
