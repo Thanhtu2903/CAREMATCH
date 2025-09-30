@@ -17,7 +17,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import MiniBatchKMeans       # works with sparse
 from sklearn.decomposition import TruncatedSVD
 # === Load Dataset ===
-carematch = pd.read_csv("carematch_requessts.csv")
+carematch = pd.read_csv("carematch_requests.csv")
 st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 # === Dashboard Title ===
 st.title("📊 Carematch Dashboard")
