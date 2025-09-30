@@ -6,22 +6,14 @@ Clean Streamlit version
 """
 
 # === Imports ===
-import streamlit as st
-import pandas as pd
+import yake
 import matplotlib.pyplot as plt
 import seaborn as sns
-from wordcloud import WordCloud, STOPWORDS
-import re
-import yake
+from scipy.sparse import hstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import StandardScaler
-from sklearn.cluster import KMeans
-from sklearn.decomposition import PCA
-from scipy.sparse import hstack
-import numpy as np, pandas as pd, streamlit as st, faiss
-from sentence_transformers import SentenceTransformer
-from sklearn.preprocessing import StandardScaler
-from collections import Counter
+from sklearn.cluster import MiniBatchKMeans       # works with sparse
+from sklearn.decomposition import TruncatedSVD
 
 
 # === Load Dataset ===
@@ -192,99 +184,137 @@ st.subheader("📊 Case Counts per Provider (Filtered by Month/Year)")
 st.dataframe(filtered)
 
 # === Keyword Extraction ===
-st.markdown("""***Data Preprocessing ***: 
-The dataset contained free-text entries under the column “condition_summary.”
-Since raw text entries often contained verbose sentences, we first applied keyword extraction. 
-We use YAKE package (Yet Another Keyword Extractor) was used to extract the most important terms from each condition summary. 
-These extracted keywords were used as the primary diagnosis terms. 
-Example: Raw Condition Summary: “Ongoing depression and emotional instability, need therapy.” Extracted Diagnosis: “ongoing depression.” 
-This ensured a consistent representation of patient conditions for clustering.""")
+st.markdown("""***Data Preprocessing***:  
+The dataset contained free-text entries under the column **condition_summary**.  
+We extract a concise diagnosis keyword from each summary using **YAKE** to standardize inputs for clustering.""")
+
 st.header("🩺 Keyword Extraction from Condition Summaries")
+
 kw_extractor = yake.KeywordExtractor(top=1, stopwords=None)
+
 def extract_keyword(text):
-    if pd.isnull(text):
+    if pd.isnull(text) or not str(text).strip():
         return None
-    keywords = kw_extractor.extract_keywords(text)
+    keywords = kw_extractor.extract_keywords(str(text))
     return keywords[0][0] if keywords else None
-carematch["diagnosis"] = carematch["condition_summary"].apply(extract_keyword)
+
+if "diagnosis" not in carematch.columns:
+    carematch["diagnosis"] = carematch["condition_summary"].apply(extract_keyword)
+
 st.subheader("Sample Condition Summaries with Diagnosis Keyword")
 st.dataframe(carematch[["condition_summary","diagnosis"]].head(50))
-keyword_counts = carematch['diagnosis'].value_counts().reset_index()
+
+keyword_counts = (carematch['diagnosis']
+                  .dropna()
+                  .value_counts()
+                  .reset_index())
 keyword_counts.columns = ["diagnosis_keyword","count"]
+
 st.subheader("Most Frequent Diagnosis Keywords")
 st.dataframe(keyword_counts.head(20))
+
+# Bar plot of top keywords
 fig9, ax9 = plt.subplots(figsize=(10,6))
-sns.barplot(data=keyword_counts.head(15), x="count", y="diagnosis_keyword", palette="viridis", ax=ax9)
+sns.barplot(data=keyword_counts.head(15), x="count", y="diagnosis_keyword", ax=ax9)
+ax9.set_xlabel("Count"); ax9.set_ylabel("Diagnosis keyword")
 st.pyplot(fig9)
 
-# === Clustering ===
+# ====================
+# === Clustering  ====
+# ====================
 st.header("🤖 Patient Clustering Analysis")
-st.markdown("""***Clustering method:***
-Beyond diagnosis extraction, we created additional features to better capture patient needs: urgency_score, chronic_conditions_count, and mental_health_flag. Together with the extracted “diagnosis”, these features formed the input for clustering analysis. To group patients into meaningful cohorts, we applied k-means clustering using scikit-learn package. The steps include the following:  
+st.markdown("""***Method:*** We combine TF-IDF vectors of the extracted **diagnosis** with three structured signals (**urgency_score**, **chronic_conditions_count**, **mental_health_flag**).  
+We then run **MiniBatchKMeans** (works with sparse matrices) and visualize clusters with **TruncatedSVD** (PCA-like for sparse).""")
 
-- ***Vectorization:*** The “diagnosis” text was converted into numeric vectors using TF-IDF (term frequency–inverse document frequency).  
+# Keep only rows that have a diagnosis keyword
+mask = carematch["diagnosis"].notnull()
+if mask.sum() < 5:
+    st.warning("Not enough rows with extracted diagnosis to run clustering (need at least 5).")
+else:
+    try:
+        # ---- Vectorize diagnosis (sparse) ----
+        vectorizer = TfidfVectorizer(stop_words="english")
+        X_text = vectorizer.fit_transform(carematch.loc[mask, "diagnosis"].astype(str))
 
-- ***Feature Combination:*** “urgency_score”, “chronic_conditions_count”, “mental_health_flag”) were concatenated with text embeddings.  
+        # ---- Scale structured features (dense to start, that’s fine) ----
+        cluster_scaler = StandardScaler()
+        X_struct = cluster_scaler.fit_transform(
+            carematch.loc[mask, ["urgency_score","chronic_conditions_count","mental_health_flag"]]
+        )
 
-- ***Optimal Cluster Selection:*** The elbow method was used to determine the appropriate number of clusters by plotting the within- sum-of-squares (WSS) across different values of. We found that k=4 is the optimal number. 
+        # ---- Fuse into one sparse-like design (X_text is sparse; hstack keeps it efficient) ----
+        X_cluster = hstack([X_text, X_struct])
 
-Cluster Labeling: Each patient was assigned to a cluster, which was then merged back with the original dataset for further analysis. """)
-vectorizer = TfidfVectorizer(stop_words="english")
-X = vectorizer.fit_transform(carematch["diagnosis"].dropna())
-structured = carematch.loc[carematch["diagnosis"].notnull(), ["urgency_score","chronic_conditions_count","mental_health_flag"]]
-scaler = StandardScaler()
-X_structured = scaler.fit_transform(structured)
-X_cluster = hstack([X, X_structured])
+        # ---- Elbow method to choose k ----
+        st.header("📉 Elbow Method for Optimal k")
+        inertia = []
+        K = range(2, 11)
+        for k_opt in K:
+            kmb = MiniBatchKMeans(n_clusters=k_opt, random_state=42, n_init=10, batch_size=2048)
+            kmb.fit(X_cluster)
+            inertia.append(kmb.inertia_)
+        fig10, ax10 = plt.subplots(figsize=(8,6))
+        ax10.plot(list(K), inertia, "bo-")
+        ax10.set_xlabel("Number of clusters (k)")
+        ax10.set_ylabel("Inertia (Within-Cluster Sum of Squares)")
+        st.pyplot(fig10)
 
-st.header("📉 Elbow Method for Optimal k")
-inertia = []
-K = range(2,11)
-for k in K:
-    kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-    kmeans.fit(X_cluster)
-    inertia.append(kmeans.inertia_)
-fig10, ax10 = plt.subplots(figsize=(8,6))
-ax10.plot(K, inertia, "bo-")
-ax10.set_xlabel("Number of clusters (k)")
-ax10.set_ylabel("Inertia (Within-Cluster Sum of Squares)")
-st.pyplot(fig10)
+        # ---- Sidebar: choose k and fit final model ----
+        st.sidebar.subheader("⚙️ Clustering Parameters")
+        k = st.sidebar.slider("Select number of clusters (k)", min_value=2, max_value=10, value=4)
 
-st.sidebar.subheader("⚙️ Clustering Parameters")
-k = st.sidebar.slider("Select number of clusters (k)", min_value=2, max_value=10, value=4)
-kmeans = KMeans(n_clusters=k, random_state=42, n_init=10)
-carematch.loc[carematch["diagnosis"].notnull(),"cluster"] = kmeans.fit_predict(X_cluster)
+        kmeans = MiniBatchKMeans(n_clusters=k, random_state=42, n_init=10, batch_size=2048)
+        labels = kmeans.fit_predict(X_cluster)
+        carematch.loc[mask, "cluster"] = labels
 
-st.subheader("📊 PCA Visualization of Clusters")
-pca = PCA(n_components=2, random_state=42)
-X_pca = pca.fit_transform(X.toarray())
-fig11, ax11 = plt.subplots(figsize=(8,6))
-sns.scatterplot(x=X_pca[:,0], y=X_pca[:,1], hue=carematch.loc[carematch["diagnosis"].notnull(),"cluster"], palette="tab10", ax=ax11)
-st.pyplot(fig11)
+        # ---- 2D visualization with TruncatedSVD (PCA-like for sparse) ----
+        st.subheader("📊 2D Visualization of Clusters")
+        svd = TruncatedSVD(n_components=2, random_state=42)
+        X_2d = svd.fit_transform(X_text)  # use text-only for a clean visual; could also use X_cluster
+        fig11, ax11 = plt.subplots(figsize=(8,6))
+        sns.scatterplot(
+            x=X_2d[:,0], y=X_2d[:,1],
+            hue=carematch.loc[mask, "cluster"].astype(int),
+            palette="tab10", ax=ax11, legend=True
+        )
+        ax11.set_xlabel("Component 1"); ax11.set_ylabel("Component 2")
+        st.pyplot(fig11)
 
-st.subheader("📑 Cluster Insights")
-st.markdown("""*** Insignt:***
-Patients with similar diagnoses (e.g., depression, anxiety) were grouped together. High-urgency cases formed distinct clusters (e.g., ongoing depression, sudden vision blur). 
-Chronic condition count played a role in differentiating patient profiles, especially in separating acute vs. long-term management needs.""")
-for c in range(k):
-    subset = carematch[carematch["cluster"] == c]
-    st.markdown(f"### 🔹 Cluster {c} Summary")
-    st.write(subset["diagnosis"].value_counts().head(5))
-    st.write("**Avg Urgency:**", round(subset["urgency_score"].mean(), 2))
-    st.write("**Avg Chronic Conditions:**", round(subset["chronic_conditions_count"].mean(), 2))
-    st.write("**Mental Health Flag %:**", round(subset["mental_health_flag"].mean()*100, 2), "%")
-    
-st.subheader("📑***CLUSTER CONCLUSION***")
+        # ---- Cluster insights ----
+        st.subheader("📑 Cluster Insights")
+        st.markdown("""Patients with similar diagnosis keywords are grouped together.  
+Structured features help separate acute vs. chronic/long-term management groups.""")
 
-st.subheader("⏱️ Wait Time Distribution by Cluster")
-fig12, ax12 = plt.subplots(figsize=(8,6))
-sns.boxplot(x="cluster", y="wait_time", data=carematch, ax=ax12)
-st.pyplot(fig12)
-st.markdown("""***Cluster 3*** has shorter wait time than other clusters. 
-This could be explained by the diagnosis symptoms such as feeling dizzy, high blood pressure, sports injury, and experiencing shortness of breath that all are externally visible, thus clinics tend to prioritize and speed up these cases.""")
-st.subheader("🏥 Provider Specialty Distribution by Cluster")
-fig13, ax13 = plt.subplots(figsize=(12,6))
-sns.countplot(x="cluster", hue="provider_specialty", data=carematch, ax=ax13)
-st.pyplot(fig13)
+        for c in sorted(carematch.loc[mask, "cluster"].unique()):
+            subset = carematch.loc[(carematch["cluster"] == c)]
+            st.markdown(f"### 🔹 Cluster {int(c)} Summary")
+            # Show top 5 diagnosis keywords
+            top_diag = subset["diagnosis"].value_counts().head(5)
+            st.dataframe(top_diag.reset_index().rename(columns={"index":"diagnosis","diagnosis":"count"}))
+            # Numeric summaries
+            st.write("**Avg Urgency:**", round(subset["urgency_score"].mean(), 2))
+            st.write("**Avg Chronic Conditions:**", round(subset["chronic_conditions_count"].mean(), 2))
+            st.write("**Mental Health Flag %:**", round(subset["mental_health_flag"].mean()*100, 2), "%")
+
+        st.subheader("⏱️ Wait Time Distribution by Cluster")
+        if "wait_time" in carematch.columns:
+            fig12, ax12 = plt.subplots(figsize=(8,6))
+            sns.boxplot(x="cluster", y="wait_time", data=carematch.loc[mask], ax=ax12)
+            st.pyplot(fig12)
+
+        st.subheader("🏥 Provider Specialty Distribution by Cluster")
+        if "provider_specialty" in carematch.columns:
+            fig13, ax13 = plt.subplots(figsize=(12,6))
+            sns.countplot(x="cluster", hue="provider_specialty", data=carematch.loc[mask], ax=ax13)
+            ax13.legend(bbox_to_anchor=(1.02, 1), loc="upper left", borderaxespad=0)
+            st.pyplot(fig13)
+
+        st.subheader("📑 ***CLUSTER CONCLUSION***")
+        st.markdown("Use these clusters as priors inside the Triage Assistant to guide specialty routing and expected wait times.")
+
+    except Exception as e:
+        # Show full traceback in the app while you iterate (remove later if you prefer)
+        st.exception(e)
 st.markdown("""***Key Takeaways***
 
 - Clusters are not distinguished by wait time, but by provider specialty demand.
