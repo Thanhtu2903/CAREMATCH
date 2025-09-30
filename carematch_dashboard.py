@@ -35,7 +35,16 @@ texts = carematch['condition_summary'].fillna("").astype(str).tolist()
 
 model = SentenceTransformer('all-MiniLM-L6-v2')
 X_text = model.encode(texts, show_progress_bar=False, convert_to_numpy=True).astype('float32')
+# Example structured features from your dataset
+structured_features = carematch[["urgency_score", 
+                                 "chronic_conditions_count", 
+                                 "mental_health_flag"]]
 
+# Convert to NumPy float32
+X_structured = structured_features.to_numpy().astype("float32")
+
+# Now safely combine with embeddings
+X_combined = np.hstack([X_text, X_structured])
 # Structured features (make sure they exist in dataset)
 structured_cols = ["zip_code", "urgency_score", "chronic_conditions_count", "mental_health_flag"]
 structured = carematch[structured_cols].fillna(0)
