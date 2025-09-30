@@ -380,3 +380,36 @@ if st.button("Generate Recommendation"):
         st.dataframe(results[['condition_summary','assigned_provider_id','provider_specialty','wait_time','similarity']])
     else:
         st.warning("⚠️ Please enter a condition summary.")
+      def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
+    """
+    Recommend providers based on patient input (structured + text features).
+    """
+
+    # --- 1. Prepare structured input (must match training features order) ---
+    # During training, you used: ["urgency_score", "chronic_conditions_count", "mental_health_flag"]
+    q_struct = [[urgency, chronic_count, mental_health]]
+
+    # Transform with same scaler (keeps dimensions consistent)
+    q_struct = scaler.transform(q_struct).astype("float32")
+
+    # --- 2. Prepare text input ---
+    q_text = model.encode([condition_summary], convert_to_numpy=True).astype("float32")
+    faiss.normalize_L2(q_text)
+
+    # --- 3. Combine structured + text ---
+    q_combined = np.hstack([q_text, q_struct])
+
+    # --- 4. Search in FAISS index ---
+    D, I = index.search(q_combined.reshape(1, -1), k)
+
+    # --- 5. Collect results ---
+    similar_rows = carematch.iloc[I[0]].copy()
+    similar_rows["similarity"] = D[0]
+
+    # Example outputs
+    provider = similar_rows["assigned_provider_id"].mode()[0] if "assigned_provider_id" in similar_rows else None
+    specialty = similar_rows["provider_specialty"].mode()[0] if "provider_specialty" in similar_rows else None
+    wait = similar_rows["wait_time"].mean() if "wait_time" in similar_rows else None
+
+    return similar_rows, provider, specialty, wait
+
