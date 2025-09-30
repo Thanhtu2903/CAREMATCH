@@ -28,28 +28,31 @@ carematch = pd.read_csv("carematch_requests.csv")
 st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 # === Dashboard Title ===
 st.title("📊 Carematch Dashboard")
-# Prepare embeddings
-# ======================
-# Text column
-texts = carematch['condition_summary'].fillna("").astype(str).tolist()
+from sklearn.preprocessing import StandardScaler
+import numpy as np
+import faiss
+from sentence_transformers import SentenceTransformer
 
+# Prepare embeddings
+texts = carematch['condition_summary'].fillna("").astype(str).tolist()
 model = SentenceTransformer('all-MiniLM-L6-v2')
 X_text = model.encode(texts, show_progress_bar=False, convert_to_numpy=True).astype('float32')
-# Example structured features from your dataset
+
+# Structured features
 structured_features = carematch[["urgency_score", 
                                  "chronic_conditions_count", 
                                  "mental_health_flag"]]
 
 # Normalize structured features
 scaler = StandardScaler()
-X_structured = scaler.fit_transform(structured)
+X_structured = scaler.fit_transform(structured_features).astype("float32")
 
 # Combine text + structured
 X_combined = np.hstack([X_text, X_structured])
 
 # Build FAISS index
 d = X_combined.shape[1]
-index = faiss.IndexFlatIP(d)
+index = faiss.IndexFlatIP(d)   # cosine similarity (after normalization)
 faiss.normalize_L2(X_combined)
 index.add(X_combined)
 
