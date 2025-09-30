@@ -18,12 +18,13 @@ from sklearn.decomposition import TruncatedSVD
 from pathlib import Path
 import streamlit as st
 
-# === Load Dataset ===
-carematch = pd.read_csv("carematch_requests.csv")
+
 st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 # === Dashboard Title ===
 st.title("📊 Carematch Dashboard")
 
+# === Load Dataset ===
+carematch = pd.read_csv("carematch_requests.csv")
 # === Introduction / Project Background ===
 st.header("🏥 Project Background")
 st.markdown("""**CareMatch Health** is a regional healthcare network serving a diverse patient population across both urban and suburban communities.  
