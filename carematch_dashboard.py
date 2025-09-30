@@ -49,16 +49,26 @@ with col1:
     fig1, ax1 = plt.subplots()
     sns.histplot(carematch['wait_time'], bins=20, kde=False, color='blue', ax=ax1)
     st.pyplot(fig1)
-
+st.markdown(""" Wait time are spread out without a strong concentration at a particular interval""")
 with col2:
     st.subheader("Chronic Conditions Distribution")
     fig2, ax2 = plt.subplots()
     sns.histplot(carematch['chronic_conditions_count'], bins=20, kde=False, color='blue', ax=ax2)
     st.pyplot(fig2)
-
+st.markdown(""" Most patients present with 0–2 chronic conditions, with 1 chronic condition being the most common.
+This distribution highlights that while the majority of cases are relatively simple, resource planning should account for a smaller group of patients with complex healthcare needs.""")
 # === Boxplots ===
 st.header("📊 Wait Time by Categories")
+# --- Conclusion for Wait Time Analysis ---
+st.markdown("""
+### ✅ Conclusion: Wait Time Analysis
 
+- Wait times are fairly consistent across **language preference, provider specialty, and urgency score**.  
+- The **median wait time is ~15 days** for all groups, with wide variability.  
+- This suggests that **individual patient characteristics and provider type do not strongly impact wait times**.  
+- Instead, delays may be driven more by **system-level factors** such as scheduling efficiency and resource allocation.  
+- ⚠️ Notably, **urgency score does not significantly reduce wait times**, highlighting a **misalignment between clinical need and scheduling practices**.
+""")
 st.subheader("Wait Time by Language Preference")
 fig3, ax3 = plt.subplots(figsize=(10,6))
 sns.boxplot(data=carematch, x="language_pref", y="wait_time", palette="Set3", ax=ax3)
