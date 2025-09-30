@@ -24,6 +24,7 @@ st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 st.title("📊 Carematch Dashboard")
 
 # === Load Dataset ===
+import pandas as pd
 carematch = pd.read_csv("carematch_requests.csv")
 # === Introduction / Project Background ===
 st.header("🏥 Project Background")
