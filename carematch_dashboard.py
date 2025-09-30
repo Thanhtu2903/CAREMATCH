@@ -24,6 +24,21 @@ carematch = pd.read_csv("carematch_requests.csv")
 st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 # === Dashboard Title ===
 st.title("📊 Carematch Dashboard")
+# --- Retrieval Function ---
+def recommend_provider(query, k=5):
+    q_emb = model.encode([query], convert_to_numpy=True).astype('float32')
+    faiss.normalize_L2(q_emb)
+    D, I = index.search(q_emb, k)
+    
+    similar_cases = carematch.iloc[I[0]].copy()
+    similar_cases['similarity'] = D[0]
+    
+    # Find most common provider & specialty in top matches
+    top_provider = similar_cases['assigned_provider_id'].mode()[0]
+    top_specialty = similar_cases['provider_specialty'].mode()[0]
+    avg_wait = similar_cases['wait_time'].mean()
+    
+    return similar_cases, top_provider, top_specialty, round(avg_wait, 2)
 
 # === Introduction / Project Background ===
 st.header("🏥 Project Background")
@@ -289,3 +304,33 @@ st.markdown(""" ***Key Takeaways***
 - Cluster 1 and Cluster 3 represent the highest patient loads and may require more staffing and scheduling flexibility to balance demand.
 
 - Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).""")
+st.header("🤖 Internal AI Triage Assistant")
+
+patient_case = st.text_area("Enter patient condition summary:")
+
+if st.button("Generate Recommendation") and patient_case:
+    results, provider, specialty, wait = recommend_provider(patient_case, k=10)
+
+    # Show results
+    st.subheader("🔎 Most Similar Past Cases")
+    st.dataframe(results[['condition_summary', 'diagnosis', 
+                          'assigned_provider_id', 'provider_specialty', 
+                          'wait_time', 'similarity']])
+
+    st.subheader("📌 Recommendation")
+    st.markdown(f"""
+    **Assigned Provider ID:** {provider}  
+    **Recommended Specialty:** {specialty}  
+    **Estimated Wait Time:** {wait} days  
+    """)
+
+    # AI-generated triage note (optional)
+    ai_note = triage_assistant(
+        f"Patient presents with: {patient_case}. "
+        f"Recommended specialty: {specialty}. "
+        f"Expected wait time: {wait} days. "
+        f"Write a short triage note for the internal care team."
+    )
+    st.subheader("📝 AI Triage Note")
+    st.write(ai_note)
+
