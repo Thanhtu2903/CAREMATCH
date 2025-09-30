@@ -382,14 +382,13 @@ if st.button("Generate Recommendation"):
         st.warning("⚠️ Please enter a condition summary.")
       def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
     """
+   def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
+    """
     Recommend providers based on patient input (structured + text features).
     """
 
-    # --- 1. Prepare structured input (must match training features order) ---
-    # During training, you used: ["urgency_score", "chronic_conditions_count", "mental_health_flag"]
+    # --- 1. Prepare structured input (MUST match scaler training) ---
     q_struct = [[urgency, chronic_count, mental_health]]
-
-    # Transform with same scaler (keeps dimensions consistent)
     q_struct = scaler.transform(q_struct).astype("float32")
 
     # --- 2. Prepare text input ---
@@ -406,10 +405,14 @@ if st.button("Generate Recommendation"):
     similar_rows = carematch.iloc[I[0]].copy()
     similar_rows["similarity"] = D[0]
 
-    # Example outputs
-    provider = similar_rows["assigned_provider_id"].mode()[0] if "assigned_provider_id" in similar_rows else None
-    specialty = similar_rows["provider_specialty"].mode()[0] if "provider_specialty" in similar_rows else None
-    wait = similar_rows["wait_time"].mean() if "wait_time" in similar_rows else None
+    # Optional: filter by zip code if provided
+    if zip_code:
+        similar_rows = similar_rows[similar_rows["zip_code"] == zip_code]
+
+    provider = similar_rows["assigned_provider_id"].mode()[0] if "assigned_provider_id" in similar_rows and not similar_rows.empty else None
+    specialty = similar_rows["provider_specialty"].mode()[0] if "provider_specialty" in similar_rows and not similar_rows.empty else None
+    wait = similar_rows["wait_time"].mean() if "wait_time" in similar_rows and not similar_rows.empty else None
 
     return similar_rows, provider, specialty, wait
+
 
