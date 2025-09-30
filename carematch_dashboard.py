@@ -23,5 +23,10 @@ st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 st.title("📊 Carematch Dashboard")
 
 # === Load Dataset ===
-carematch = pd.read_csv("data/carematch_requests.csv")
 
+
+from pathlib import Path, PurePath
+import os, glob
+print("CWD:", os.getcwd())
+print("Script dir:", Path(__file__).resolve().parent if "__file__" in globals() else Path.cwd())
+print("Tìm CSV:", glob.glob("**/carematch_requests.*", recursive=True))
