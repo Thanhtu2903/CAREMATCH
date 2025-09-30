@@ -268,7 +268,7 @@ for c in range(k):
     st.write("**Avg Chronic Conditions:**", round(subset["chronic_conditions_count"].mean(), 2))
     st.write("**Mental Health Flag %:**", round(subset["mental_health_flag"].mean()*100, 2), "%")
     
-st.subheader("📑***CLUSTER CONCLUSION***)
+st.subheader("📑***CLUSTER CONCLUSION***")
 st.markdown(""" ***Key Takeaways***
 
 - Clusters are not distinguished by wait time, but by provider specialty demand.
