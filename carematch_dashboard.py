@@ -59,29 +59,36 @@ index.add(X_combined)
 # ======================
 # Retrieval Function
 # ======================
-def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
-    # Encode new patient text
-    q_text = model.encode([condition_summary], convert_to_numpy=True).astype('float32')
+ Recommend providers based on patient input (structured + text features).
+    """
 
-    # Structured input
-    q_struct = np.array([[zip_code, urgency, chronic_count, mental_health]])
-    q_struct = scaler.transform(q_struct)
+    # --- 1. Prepare structured input (MUST match scaler training) ---
+    q_struct = [[urgency, chronic_count, mental_health]]
+    q_struct = scaler.transform(q_struct).astype("float32")
 
-    # Combine
-    q_vector = np.hstack([q_text, q_struct]).astype('float32')
-    faiss.normalize_L2(q_vector)
+    # --- 2. Prepare text input ---
+    q_text = model.encode([condition_summary], convert_to_numpy=True).astype("float32")
+    faiss.normalize_L2(q_text)
 
-    # Search
-    D, I = index.search(q_vector, k)
-    similar_cases = carematch.iloc[I[0]].copy()
-    similar_cases['similarity'] = D[0]
+    # --- 3. Combine structured + text ---
+    q_combined = np.hstack([q_text, q_struct])
 
-    # Aggregate recommendation
-    top_provider = similar_cases['assigned_provider_id'].mode()[0]
-    top_specialty = similar_cases['provider_specialty'].mode()[0]
-    avg_wait = similar_cases['wait_time'].mean()
+    # --- 4. Search in FAISS index ---
+    D, I = index.search(q_combined.reshape(1, -1), k)
 
-    return similar_cases, top_provider, top_specialty, round(avg_wait, 2)
+    # --- 5. Collect results ---
+    similar_rows = carematch.iloc[I[0]].copy()
+    similar_rows["similarity"] = D[0]
+
+    # Optional: filter by zip code if provided
+    if zip_code:
+        similar_rows = similar_rows[similar_rows["zip_code"] == zip_code]
+
+    provider = similar_rows["assigned_provider_id"].mode()[0] if "assigned_provider_id" in similar_rows and not similar_rows.empty else None
+    specialty = similar_rows["provider_specialty"].mode()[0] if "provider_specialty" in similar_rows and not similar_rows.empty else None
+    wait = similar_rows["wait_time"].mean() if "wait_time" in similar_rows and not similar_rows.empty else None
+
+    return similar_rows, provider, specialty, wait
 # === Introduction / Project Background ===
 st.header("🏥 Project Background")
 st.markdown("""**CareMatch Health** is a regional healthcare network serving a diverse patient population across both urban and suburban communities.  
@@ -384,35 +391,6 @@ if st.button("Generate Recommendation"):
     """
    def recommend_provider(zip_code, urgency, chronic_count, mental_health, condition_summary, k=5):
     """
-    Recommend providers based on patient input (structured + text features).
-    """
-
-    # --- 1. Prepare structured input (MUST match scaler training) ---
-    q_struct = [[urgency, chronic_count, mental_health]]
-    q_struct = scaler.transform(q_struct).astype("float32")
-
-    # --- 2. Prepare text input ---
-    q_text = model.encode([condition_summary], convert_to_numpy=True).astype("float32")
-    faiss.normalize_L2(q_text)
-
-    # --- 3. Combine structured + text ---
-    q_combined = np.hstack([q_text, q_struct])
-
-    # --- 4. Search in FAISS index ---
-    D, I = index.search(q_combined.reshape(1, -1), k)
-
-    # --- 5. Collect results ---
-    similar_rows = carematch.iloc[I[0]].copy()
-    similar_rows["similarity"] = D[0]
-
-    # Optional: filter by zip code if provided
-    if zip_code:
-        similar_rows = similar_rows[similar_rows["zip_code"] == zip_code]
-
-    provider = similar_rows["assigned_provider_id"].mode()[0] if "assigned_provider_id" in similar_rows and not similar_rows.empty else None
-    specialty = similar_rows["provider_specialty"].mode()[0] if "provider_specialty" in similar_rows and not similar_rows.empty else None
-    wait = similar_rows["wait_time"].mean() if "wait_time" in similar_rows and not similar_rows.empty else None
-
-    return similar_rows, provider, specialty, wait
+   
 
 
