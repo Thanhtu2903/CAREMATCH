@@ -16,8 +16,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import MiniBatchKMeans       # works with sparse
 from sklearn.decomposition import TruncatedSVD
-
-
 # === Load Dataset ===
 carematch = pd.read_csv("carematch_requessts.csv")
 st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
