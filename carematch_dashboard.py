@@ -269,15 +269,7 @@ for c in range(k):
     st.write("**Mental Health Flag %:**", round(subset["mental_health_flag"].mean()*100, 2), "%")
     
 st.subheader("📑***CLUSTER CONCLUSION***")
-st.markdown(""" ***Key Takeaways***
 
-- Clusters are not distinguished by wait time, but by provider specialty demand.
-
-- Resource allocation should therefore focus on specialty coverage rather than purely reducing wait times.
-
-- Cluster 1 and Cluster 3 represent the highest patient loads and may require more staffing and scheduling flexibility to balance demand.
-
-- Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).""")
 st.subheader("⏱️ Wait Time Distribution by Cluster")
 fig12, ax12 = plt.subplots(figsize=(8,6))
 sns.boxplot(x="cluster", y="wait_time", data=carematch, ax=ax12)
@@ -288,3 +280,12 @@ st.subheader("🏥 Provider Specialty Distribution by Cluster")
 fig13, ax13 = plt.subplots(figsize=(12,6))
 sns.countplot(x="cluster", hue="provider_specialty", data=carematch, ax=ax13)
 st.pyplot(fig13)
+st.markdown(""" ***Key Takeaways***
+
+- Clusters are not distinguished by wait time, but by provider specialty demand.
+
+- Resource allocation should therefore focus on specialty coverage rather than purely reducing wait times.
+
+- Cluster 1 and Cluster 3 represent the highest patient loads and may require more staffing and scheduling flexibility to balance demand.
+
+- Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).""")
