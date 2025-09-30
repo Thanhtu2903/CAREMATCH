@@ -21,9 +21,10 @@ from scipy.sparse import hstack
 
 # === Load Dataset ===
 carematch = pd.read_csv("carematch_requests.csv")
-
+st.markdown(""" ***GROUP 4***: TU PHAM & MINH NGUYEN""")
 # === Dashboard Title ===
 st.title("📊 Carematch Dashboard")
+
 # === Introduction / Project Background ===
 st.header("🏥 Project Background")
 st.markdown("""**CareMatch Health** is a regional healthcare network serving a diverse patient population across both urban and suburban communities.  
@@ -213,7 +214,7 @@ st.pyplot(fig9)
 
 # === Clustering ===
 st.header("🤖 Patient Clustering Analysis")
-st.markdown("""*** Clustering method:***
+st.markdown("""***Clustering method:***
 Beyond diagnosis extraction, we created additional features to better capture patient needs: urgency_score, chronic_conditions_count, and mental_health_flag. Together with the extracted “diagnosis”, these features formed the input for clustering analysis. To group patients into meaningful cohorts, we applied k-means clustering using scikit-learn package. The steps include the following:  
 
 - ***Vectorization:*** The “diagnosis” text was converted into numeric vectors using TF-IDF (term frequency–inverse document frequency).  
@@ -256,6 +257,9 @@ sns.scatterplot(x=X_pca[:,0], y=X_pca[:,1], hue=carematch.loc[carematch["diagnos
 st.pyplot(fig11)
 
 st.subheader("📑 Cluster Insights")
+st.markdown("""*** Insignt:***
+Patients with similar diagnoses (e.g., depression, anxiety) were grouped together. High-urgency cases formed distinct clusters (e.g., ongoing depression, sudden vision blur). 
+Chronic condition count played a role in differentiating patient profiles, especially in separating acute vs. long-term management needs.""")
 for c in range(k):
     subset = carematch[carematch["cluster"] == c]
     st.markdown(f"### 🔹 Cluster {c} Summary")
@@ -263,12 +267,23 @@ for c in range(k):
     st.write("**Avg Urgency:**", round(subset["urgency_score"].mean(), 2))
     st.write("**Avg Chronic Conditions:**", round(subset["chronic_conditions_count"].mean(), 2))
     st.write("**Mental Health Flag %:**", round(subset["mental_health_flag"].mean()*100, 2), "%")
+    
+st.subheader("📑***CLUSTER CONCLUSION***)
+st.markdown(""" ***Key Takeaways***
 
+- Clusters are not distinguished by wait time, but by provider specialty demand.
+
+- Resource allocation should therefore focus on specialty coverage rather than purely reducing wait times.
+
+- Cluster 1 and Cluster 3 represent the highest patient loads and may require more staffing and scheduling flexibility to balance demand.
+
+- Clusters 0 and 2, though smaller, should not be overlooked as they might represent unique patient needs (e.g., targeted chronic conditions or specific demographics).""")
 st.subheader("⏱️ Wait Time Distribution by Cluster")
 fig12, ax12 = plt.subplots(figsize=(8,6))
 sns.boxplot(x="cluster", y="wait_time", data=carematch, ax=ax12)
 st.pyplot(fig12)
-
+st.markdown("""***Cluster 3*** has shorter wait time than other clusters. 
+This could be explained by the diagnosis symptoms such as feeling dizzy, high blood pressure, sports injury, and experiencing shortness of breath that all are externally visible, thus clinics tend to prioritize and speed up these cases.""")
 st.subheader("🏥 Provider Specialty Distribution by Cluster")
 fig13, ax13 = plt.subplots(figsize=(12,6))
 sns.countplot(x="cluster", hue="provider_specialty", data=carematch, ax=ax13)
