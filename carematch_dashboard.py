@@ -87,7 +87,8 @@ st.pyplot(fig5)
 # === Countplots ===
 st.header("📊 Distribution of Categorical Variables")
 col3, col4 = st.columns(2)
-
+st.markdown("""**Urgency Score Distribution** is fairly balanced across all five levels, indicating that patients are being assigned urgency ratings in a relatively even manner. 
+**Mental Health Flag** shows a strong imbalance: the vast majority of requests (~85%) are **not flagged for mental health**, while only a small fraction (~15%) are.""")
 with col3:
     st.subheader("Urgency Score Distribution")
     fig6, ax6 = plt.subplots(figsize=(8,5))
@@ -102,7 +103,7 @@ with col4:
 
 # === Word Cloud ===
 st.header("☁️ Word Cloud of Condition Summaries")
-
+st.markdown("""The word cloud provides a **quick thematic snapshot** of what patients are most frequently seeking help for, guiding providers on where to focus resources.""")
 def preprocess(text):
     if pd.isnull(text):
         return ""
@@ -126,6 +127,12 @@ st.pyplot(fig8)
 # === Case & Provider Counts with Filters ===
 st.header("📊 Case & Provider Counts with Filters")
 st.sidebar.header("🔎 Filters")
+st.markdown(""" 
+- ***Provider Coverage by Location:** How many unique providers are available within each zip code?
+
+- ***Workload Distribution by Month:*** How many patient cases are assigned to each provider on a monthly basis?
+
+- ***Provider Case Volume:*** How many total cases each provider ID is responsible for managing, reflecting workload intensity.""")
 
 zip_options = sorted(carematch['zip_code'].dropna().unique())
 provider_options = sorted(carematch['assigned_provider_id'].dropna().unique())
