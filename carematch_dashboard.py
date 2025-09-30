@@ -14,7 +14,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import MiniBatchKMeans       # works with sparse
 from sklearn.decomposition import TruncatedSVD
-from pathlib import Path
 import streamlit as st
 
 
