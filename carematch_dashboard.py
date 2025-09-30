@@ -16,6 +16,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import MiniBatchKMeans       # works with sparse
 from sklearn.decomposition import TruncatedSVD
+from pathlib import Path
+import streamlit as st
 # === Load Dataset ===
 import streamlit as st
 carematch = pd.read_csv("carematch_requests.csv")
