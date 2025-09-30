@@ -35,22 +35,22 @@ carematch = pd.read_csv("carematch_requests.csv")
 # carematch = pd.read_csv("carematch_requests.csv")
 # 
 # # --- Dashboard Title ---
-# st.title("📊 Carematch Dashboard")
+st.title("📊 Carematch Dashboard")
 # 
 # # --- Show sample data ---
-# st.subheader("Sample Data")
-# st.write(carematch.head())
+st.subheader("Sample Data")
+st.write(carematch.head())
 # 
 # # --- Sidebar filter ---
 # bins = st.sidebar.slider("Select number of bins for histogram", 5, 50, 20)
 # # --- Descriptive Stats for All Variables ---
-# st.header("📊 Descriptive Statistics (All Variables)")
+st.header("📊 Descriptive Statistics (All Variables)")
 # 
 # # Descriptive stats for numeric + categorical variables
 # desc_stats = carematch.describe(include="all").T   # transpose for readability
 # 
 # # Show as interactive table
-# st.dataframe(desc_stats)
+st.dataframe(desc_stats)
 # 
 # # --- Histogram Plot ---
 # import streamlit as st
@@ -61,7 +61,7 @@ carematch = pd.read_csv("carematch_requests.csv")
 # col1, col2 = st.columns(2)
 # 
 # with col1:
-#     st.subheader("Wait Time Distribution")
+ st.subheader("Wait Time Distribution")
 #     fig1, ax1 = plt.subplots()
 #     sns.histplot(carematch['wait_time'], bins=20, kde=False, color='blue', ax=ax1)
 #     ax1.set_xlabel("wait_time")
@@ -69,35 +69,35 @@ carematch = pd.read_csv("carematch_requests.csv")
 #     st.pyplot(fig1)
 # 
 # with col2:
-#     st.subheader("Chronic Conditions Distribution")
+   st.subheader("Chronic Conditions Distribution")
 #     fig2, ax2 = plt.subplots()
 #     sns.histplot(carematch['chronic_conditions_count'], bins=20, kde=False, color='blue', ax=ax2)
 #     ax2.set_xlabel("chronic_conditions_count")
 #     ax2.set_ylabel("Count")
 #     st.pyplot(fig2)
 # # --- SECTION: Boxplots ---
-# st.header("📊 Wait Time by Categories")
+st.header("📊 Wait Time by Categories")
 # 
 # # 1. Wait Time by Language Preference
-# st.subheader("Wait Time by Language Preference")
+st.subheader("Wait Time by Language Preference")
 # fig1, ax1 = plt.subplots(figsize=(10,6))
 # sns.boxplot(data=carematch, x="language_pref", y="wait_time", palette="Set3", ax=ax1)
 # ax1.set_title("Wait Time by Language Preference")
 # ax1.set_xlabel("language_pref")
 # ax1.set_ylabel("Wait Time")
-# st.pyplot(fig1)
+st.pyplot(fig1)
 # 
 # # 2. Wait Time by Provider Specialty
-# st.subheader("Wait Time by Provider Specialty")
+st.subheader("Wait Time by Provider Specialty")
 # fig2, ax2 = plt.subplots(figsize=(10,6))
 # sns.boxplot(data=carematch, x="provider_specialty", y="wait_time", palette="Set3", ax=ax2)
 # ax2.set_title("Wait Time by Provider Specialty")
 # ax2.set_xlabel("provider_specialty")
 # ax2.set_ylabel("Wait Time")
-# st.pyplot(fig2)
+st.pyplot(fig2)
 # 
 # # 3. Wait Time by Urgency Score
-# st.subheader("Wait Time by Urgency Score")
+st.subheader("Wait Time by Urgency Score")
 # fig3, ax3 = plt.subplots(figsize=(10,6))
 # sns.boxplot(data=carematch, x="urgency_score", y="wait_time", palette="Set3", ax=ax3)
 # ax3.set_title("Wait Time by Urgency Score")
@@ -105,13 +105,13 @@ carematch = pd.read_csv("carematch_requests.csv")
 # ax3.set_ylabel("Wait Time")
 # st.pyplot(fig3)
 # # --- SECTION: Countplots ---
-# st.header("📊 Distribution of Categorical Variables")
+st.header("📊 Distribution of Categorical Variables")
 # 
 # col1, col2 = st.columns(2)   # put them side by side
 # 
 # # 1. Urgency Score Distribution
 # with col1:
-#     st.subheader("Urgency Score Distribution")
+  st.subheader("Urgency Score Distribution")
 #     fig1, ax1 = plt.subplots(figsize=(8,5))
 #     sns.countplot(data=carematch,
 #                   x="urgency_score",
@@ -171,8 +171,8 @@ carematch = pd.read_csv("carematch_requests.csv")
 # ax.imshow(wordcloud, interpolation="bilinear")
 # ax.axis("off")
 # ax.set_title("Word Cloud of Condition Summaries", fontsize=18)
-# st.pyplot(fig)
-# st.header("📊 Case & Provider Counts with Filters")
+st.pyplot(fig)
+ st.header("📊 Case & Provider Counts with Filters")
 # 
 # # --- Sidebar Filters ---
 # st.sidebar.header("🔎 Filters")
