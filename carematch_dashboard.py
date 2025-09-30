@@ -10,6 +10,7 @@ import yake
 import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
+from pathlib import Path
 from scipy.sparse import hstack
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.preprocessing import StandardScaler
