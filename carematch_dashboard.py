@@ -26,11 +26,12 @@ carematch = pd.read_csv("carematch_requests.csv")
 st.title("📊 Carematch Dashboard")
 # === Introduction / Project Background ===
 st.header("🏥 Project Background")
-st.markdown("""
-**CareMatch Health** is a regional healthcare network serving a diverse patient population across both urban and suburban communities.  
+st.markdown("""**CareMatch Health** is a regional healthcare network serving a diverse patient population across both urban and suburban communities.  
 Patients submit appointment requests and complete intake forms through the organization’s digital platforms.  
 
-Although CareMatch holds a large volume of patient and operational data, it has not yet implemented advanced analytics or AI-powered tools to derive value from this information.  
+Although CareMatch holds a large volume of patient and operational data, it has not yet implemented advanced analytics or AI-powered tools to derive value from this information.
+➡️ As a result, the immediate need is to **explore the data, identify opportunities, extract actionable insights, and build data-driven solutions** that can improve access, efficiency, and patient experience.
+""")
 # === Show Sample Data ===
 st.subheader("Sample Data")
 st.write(carematch.head())
